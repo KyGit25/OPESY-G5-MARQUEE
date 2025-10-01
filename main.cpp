@@ -8,6 +8,9 @@
 #include <mutex>
 #include <iomanip>
 #include <queue>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 // --- Shared State and Thread Control ---
 std::atomic<bool> is_running{true};
@@ -101,18 +104,30 @@ void display_thread_func() {
 }
 
 
+void enableANSI() {
+#ifdef _WIN32
+    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    if (hOut == INVALID_HANDLE_VALUE) return;
+
+    DWORD dwMode = 0;
+    if (!GetConsoleMode(hOut, &dwMode)) return;
+
+    dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+    SetConsoleMode(hOut, dwMode);
+#endif
+}
 
 
 // --- Main Function (Command Interpreter Thread) ---
 int main() {
+    enableANSI();
     std::thread marquee_logic_thread(marquee_logic_thread_func, 40);
     std::thread display_thread(display_thread_func);
     std::thread keyboard_handler_thread(keyboard_handler_thread_func);
 
     std::cout << "\033c"; // full terminal reset
     std::this_thread::sleep_for(std::chrono::milliseconds(30));
-    
-    // Initial layout: blank line 2, prompt at line 3
+
     gotoxy(1, 2);
     std::cout << "\033[K";
     print_prompt();
@@ -170,6 +185,8 @@ int main() {
                 }
             } else if (cmd == "exit") {
                 is_running = false;
+                std::cout << "Exiting program...\n";
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
             } else {
                 std::cout << "Unknown command: " << cmd << "\n";
             }
@@ -184,6 +201,9 @@ int main() {
     if (marquee_logic_thread.joinable()) marquee_logic_thread.join();
     if (display_thread.joinable()) display_thread.join();
     if (keyboard_handler_thread.joinable()) keyboard_handler_thread.join();
+
+    std::cout << "\033[0m\033[2J\033[H"; 
+    std::cout.flush();
 
     return 0;
 }
