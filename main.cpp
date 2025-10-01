@@ -8,9 +8,6 @@
 #include <mutex>
 #include <iomanip>
 #include <queue>
-#ifdef _WIN32
-#include <windows.h>
-#endif
 
 // --- Shared State and Thread Control ---
 std::atomic<bool> is_running{true};
