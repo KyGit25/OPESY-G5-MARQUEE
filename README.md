@@ -1,1 +1,0 @@
-# OPESY-G5-MARQUEE
