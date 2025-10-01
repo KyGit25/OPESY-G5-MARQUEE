@@ -1,0 +1,199 @@
+#include <iostream>
+#include <thread>
+#include <atomic>
+#include <chrono>
+#include <string>
+#include <conio.h>
+#include <windows.h>
+#include "globals.h"
+#include "CommandInterpreter.h"
+#include "DisplayHandler.h"
+#include "KeyboardHandler.h"
+#include "MarqueeLogic.h"
+
+// Initialize global variables
+std::atomic<bool> exitFlag(false);
+std::atomic<bool> runFlag(false);
+std::atomic<int> marqueeSpeedMs(200);
+std::string marqueeText = "Welcome to OS Emulator!";
+std::mutex marqueeTextMutex;
+
+ThreadQueue<std::string> displayQueue;
+ThreadQueue<std::string> inputQueue;
+
+void CommandInterpreter::showHelp() {
+    std::string help = "\nAvailable Commands:\n"
+                      "  help         - Show this help message\n"
+                      "  start_marquee - Start the marquee animation\n"
+                      "  stop_marquee  - Stop the marquee animation\n"
+                      "  set_text     - Set new text for the marquee\n"
+                      "  set_speed    - Set marquee animation speed (milliseconds)\n"
+                      "  exit         - Exit the program\n";
+    displayQueue.push(help);
+}
+
+void CommandInterpreter::trim(std::string &s) {
+    s.erase(0, s.find_first_not_of(" \t\n\r\f\v"));
+    s.erase(s.find_last_not_of(" \t\n\r\f\v") + 1);
+}
+
+void CommandInterpreter::run() {
+    std::string command;
+    while (!exitFlag) {
+        if (inputQueue.try_pop(command)) {
+            trim(command);
+            
+            if (command == "help") {
+                showHelp();
+            }
+            else if (command == "start_marquee") {
+                runFlag = true;
+                displayQueue.push("Marquee started");
+            }
+            else if (command == "stop_marquee") {
+                runFlag = false;
+                displayQueue.push("Marquee stopped");
+            }
+            else if (command.substr(0, 8) == "set_text") {
+                if (command.length() > 9) {
+                    std::string newText = command.substr(9);
+                    std::lock_guard<std::mutex> lock(marqueeTextMutex);
+                    marqueeText = newText;
+                    displayQueue.push("Marquee text updated");
+                } else {
+                    displayQueue.push("Usage: set_text <your text here>");
+                }
+            }
+            else if (command.substr(0, 9) == "set_speed") {
+                try {
+                    int speed = std::stoi(command.substr(10));
+                    if (speed > 0) {
+                        marqueeSpeedMs = speed;
+                        displayQueue.push("Marquee speed updated");
+                    } else {
+                        displayQueue.push("Speed must be positive");
+                    }
+                } catch (...) {
+                    displayQueue.push("Usage: set_speed <milliseconds>");
+                }
+            }
+            else if (command == "exit") {
+                exitFlag = true;
+                displayQueue.push("Exiting...");
+            }
+            else if (!command.empty()) {
+                displayQueue.push("Unknown command. Type 'help' for available commands.");
+            }
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+}
+
+std::mutex DisplayHandler::ioMutex;
+
+void DisplayHandler::show(const std::string &message) {
+    std::lock_guard<std::mutex> lock(ioMutex);
+    std::cout << message << std::endl;
+}
+
+void DisplayHandler::printMessage(const std::string &m) {
+    std::lock_guard<std::mutex> lock(ioMutex);
+    COORD coord;
+    coord.X = 0;
+    coord.Y = 0;
+    SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), coord);
+    std::cout << std::string(80, ' ') << '\r';  // Clear line
+    std::cout << m << std::endl;
+    std::cout << "\nEnter command: ";
+}
+
+void DisplayHandler::run() {
+    std::string message;
+    while (!exitFlag) {
+        if (displayQueue.try_pop(message)) {
+            printMessage(message);
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+}
+
+std::string KeyboardHandler::getInput(const std::string &prompt) {
+    std::string input;
+    std::cout << prompt;
+    std::getline(std::cin, input);
+    return input;
+}
+
+void KeyboardHandler::run() {
+    while (!exitFlag) {
+        std::string input = getInput("");
+        inputQueue.push(input);
+    }
+}
+
+void MarqueeLogic::sleepMs(int ms) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+}
+
+void MarqueeLogic::run() {
+    while (!exitFlag) {
+        if (runFlag) {
+            std::string text;
+            {
+                std::lock_guard<std::mutex> lock(marqueeTextMutex);
+                text = marqueeText;
+            }
+            
+            if (!text.empty()) {
+                // Rotate the text
+                text = text + " " + text;  // Double the text for smooth scrolling
+                size_t len = text.length();
+                size_t pos = 0;
+                size_t width = 40;  // Display width
+
+                while (runFlag && !exitFlag) {
+                    std::string display = text.substr(pos, width);
+                    if (display.length() < width) {
+                        display += text.substr(0, width - display.length());
+                    }
+                    displayQueue.push(display);
+                    
+                    pos = (pos + 1) % (len / 2);  // Only scroll through first half
+                    sleepMs(marqueeSpeedMs);
+                }
+            }
+        }
+        sleepMs(100);
+    }
+}
+
+int main() {
+    // Set console title
+    SetConsoleTitle(L"OS Emulator");
+    
+    // Clear screen
+    system("cls");
+
+    // Create instances of our components
+    CommandInterpreter commandInterpreter;
+    DisplayHandler displayHandler;
+    KeyboardHandler keyboardHandler;
+    MarqueeLogic marqueeLogic;
+
+    // Create threads
+    std::thread cmdThread(&CommandInterpreter::run, &commandInterpreter);
+    std::thread displayThread(&DisplayHandler::run, &displayHandler);
+    std::thread keyboardThread(&KeyboardHandler::run, &keyboardHandler);
+    std::thread marqueeThread(&MarqueeLogic::run, &marqueeLogic);
+
+    // Show initial help message
+    displayQueue.push("Welcome to OS Emulator!\nType 'help' for available commands.");
+
+    // Wait for threads to complete
+    cmdThread.join();
+    displayThread.join();
+    keyboardThread.join();
+    marqueeThread.join();
+
+    return 0;
+}
