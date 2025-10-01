@@ -110,7 +110,8 @@ int main() {
     std::thread keyboard_handler_thread(keyboard_handler_thread_func);
 
     std::cout << "\033c"; // full terminal reset
-
+    std::this_thread::sleep_for(std::chrono::milliseconds(30));
+    
     // Initial layout: blank line 2, prompt at line 3
     gotoxy(1, 2);
     std::cout << "\033[K";
