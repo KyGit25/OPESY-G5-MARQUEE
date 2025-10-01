@@ -1,7 +1,7 @@
 This is our groups implementation of creation of an OS Emulator that simulates a marquee!
 
 Members:
-Desamito, Hector Francis, S.
+Desamito, Hector Francis Seigmund, P.
 Maristela, Kyle Gabriel, A.
 San Luis, Owen Phillip, C.
 
