@@ -87,40 +87,22 @@ void display_thread_func() {
     const int refresh_rate_ms = 50;
     while (is_running) {
         std::cout << "\033[s";
-        // Update only the marquee line
+        // update only the marquee line
         gotoxy(1, 1);        
-        std::cout << "\033[K"; // Clear line
+        std::cout << "\033[K"; // clear line
         {
             std::unique_lock<std::mutex> lock(marquee_mutex);
             std::cout << marquee_display_buffer << std::flush;
         }
         std::cout << "\033[u" << std::flush;
 
-        // Important: DO NOT touch the input line here
-        // Cursor stays where user is typing
-
         std::this_thread::sleep_for(std::chrono::milliseconds(refresh_rate_ms));
     }
 }
 
 
-void enableANSI() {
-#ifdef _WIN32
-    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
-    if (hOut == INVALID_HANDLE_VALUE) return;
-
-    DWORD dwMode = 0;
-    if (!GetConsoleMode(hOut, &dwMode)) return;
-
-    dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
-    SetConsoleMode(hOut, dwMode);
-#endif
-}
-
-
 // --- Main Function (Command Interpreter Thread) ---
 int main() {
-    enableANSI();
     std::thread marquee_logic_thread(marquee_logic_thread_func, 40);
     std::thread display_thread(display_thread_func);
     std::thread keyboard_handler_thread(keyboard_handler_thread_func);
@@ -191,7 +173,7 @@ int main() {
                 std::cout << "Unknown command: " << cmd << "\n";
             }
 
-            // Always restore prompt after command
+            // always restore prompt after command
             print_prompt();
         }
 
